@@ -3,24 +3,30 @@ using System.Collections.Generic;
 using System.Linq;
 using Unity.VisualScripting;
 using UnityEngine;
-
+using UnityEngine.UI;
 
 [RequireComponent(typeof(MeshFilter))]
 public class mesh_generator : MonoBehaviour
 {
     const float PI = 3.1415f;
-    public int segments = 4;
-    public int topSegments = 12;
-    public int botSegments = 16;
-    public int height = 1;
-    public int topRadius = 1;
-    public int botRadius = 3;
+    public int segments = 64;
+    float funnelHeight = 1.0f;
+    float funnelRadius = 1.0f;
+    float tubeRadius = 1.0f;
+    float tubeLength = 1.0f;
+    float txtScale = 1.0f;
+    public bool perFace = false;
+
+    public Slider fHeightSlider;
+    public Slider fRadiusSlider;
+    public Slider tLengthSlider;
+    public Slider tRadiusSlider;
 
     Mesh mesh;
 
     List<Vector3> vertices = new List<Vector3>();
     List<int> indices = new List<int>();
-    int[] triangles;
+    List<Vector2> uvs = new List<Vector2>();
 
     // Start is called before the first frame update
     void Start()
@@ -28,63 +34,96 @@ public class mesh_generator : MonoBehaviour
         mesh = new Mesh();
         GetComponent<MeshFilter>().mesh = mesh;
 
+        
         CreateShape();
         UpdateMesh();
-        
+
+        fRadiusSlider.onValueChanged.AddListener(delegate { updateFromSlider(); });
+        fHeightSlider.onValueChanged.AddListener(delegate { updateFromSlider(); });
+        tLengthSlider.onValueChanged.AddListener(delegate { updateFromSlider(); });
+        tRadiusSlider.onValueChanged.AddListener(delegate { updateFromSlider(); });
     }
 
-   /* void CreateShapeDep()
-    {
-        vertices.Clear();
-        indices.Clear();  
-        List<Vector3> topV = new List<Vector3>();
-        List<Vector3> botV = new List<Vector3>();
 
-        Debug.Log("1Updating mesh with height: " + height);
+    void createFunnel()
+    {
+        float step = (PI * 2.0f) / segments;
         for (int i = 0; i < segments; i++)
         {
-            float segment = (float)i / segments;
-            float r = segment * PI * 2.0f;
-            float x = Mathf.Cos(r) * radius;
-            float z = Mathf.Sin(r) * radius;
-            vertices.Add(new Vector3(x, 0f, z));
-            vertices.Add(new Vector3(x, height, z));
-        }
+            float r = i * step;
+            float x = Mathf.Cos(r);
+            float z = Mathf.Sin(r);
+            vertices.Add(new Vector3(x * funnelRadius, funnelHeight, z * funnelRadius));
+            vertices.Add(new Vector3(x * tubeRadius, 0f , z * tubeRadius));
+            vertices.Add(new Vector3(x * tubeRadius, -tubeLength, z * tubeRadius));
 
-        for (int i = 0;i < segments; i++)
+            if(perFace)
+            {
+                if ((float)i % 2 == 0)
+                {
+                    uvs.Add(new Vector2(0.0f, 1.0f));
+                    uvs.Add(new Vector2(0.0f, 0.5f));
+                    uvs.Add(new Vector2(0.0f, 0.0f));
+                }
+                else
+                {
+                    uvs.Add(new Vector2(1.0f, 1.0f));
+                    uvs.Add(new Vector2(1.0f, 0.5f));
+                    uvs.Add(new Vector2(1.0f, 0.0f));
+                }
+            }
+            else
+            {
+                float w = (float)i / segments;
+                
+                uvs.Add(new Vector2(w, 1f));
+                uvs.Add(new Vector2(w, 0.5f));
+                uvs.Add(new Vector2(w, 0f));
+            }
+
+        }
+        /////handle seam
+        if (!perFace)
         {
-             int ii = i * 2;
-             int jj = (ii + 2) % (segments * 2);
-             int kk = (ii + 3) % (segments * 2);
-             int ll = ii + 1;
-             indices.Add(ii);
-             indices.Add(jj);
-            // indices.Add(kk);
-             indices.Add(ll);
-            /////
-            indices.Add(jj);
-            indices.Add(kk);
-            indices.Add(ll);
+            vertices.Add(new Vector3(funnelRadius, funnelHeight, 0f));
+            vertices.Add(new Vector3(tubeRadius, 0f, 0f));
+            vertices.Add(new Vector3(tubeRadius, -tubeLength, 0f));
 
-
+            uvs.Add(new Vector2(0.999f, 1f));
+            uvs.Add(new Vector2(0.999f, 0.5f));
+            uvs.Add(new Vector2(0.999f, 0f));
         }
 
 
-        // vertices = new Vector3[]
-        // {
-        //     new Vector3 (0.0f, 0.0f, 0.0f),
-        //     new Vector3 (0.0f, 0.0f, 1.0f),
-        //     new Vector3 (1.0f, 0.0f, 0.0f)
-        // };
+        for (int i = 0; i < segments; i++)
+        {
+            int a = i * 3;
+            int b = (a + 1) % (segments * 3); //this mod must go on perface mode
+            int c = (a + 2) % (segments * 3);
+            int d = (a + 3) % (segments * 3);
+            int e = (a + 4) % (segments * 3);
+            int f = (a + 5) % (segments * 3);
 
-       // triangles = new int[]
-       // {
-       //     0, 1, 2
-       //
-       // };
+            //funnel
+            indices.Add(a); indices.Add(d); indices.Add(b);
+            indices.Add(d); indices.Add(e); indices.Add(b);
+            //tube
+            indices.Add(b); indices.Add(e); indices.Add(c);
+            indices.Add(e); indices.Add(f); indices.Add(c);
+        }
     }
-   */
-    void CreateShape()
+   void CreateShape()
+    {
+        vertices.Clear();
+        indices.Clear();
+        uvs.Clear();
+ 
+        ///Funnel
+        createFunnel();
+
+    }
+
+    /*void CreateShape()
     {
         vertices.Clear();
         indices.Clear();
@@ -121,10 +160,12 @@ public class mesh_generator : MonoBehaviour
 
         float step = (float)minSegment / maxSegment;
         float counter = step;
-        
+
+        print("START HERE");
         for (int i = 0; i < maxSegment + 1; i++)
         {
             int scounter = 0;
+            int offset = 0;
             //counter += step;
             if(counter >= 1)
             {
@@ -139,9 +180,13 @@ public class mesh_generator : MonoBehaviour
                 indices.Add(b0);
                 indices.Add(t1);
                 indices.Add(b1);
-
+                print(b0);
+                print(t1);
+                print(b1);
                 counter -= 1;
-  
+                offset++;
+
+
             }
 
             int it = 0;
@@ -151,7 +196,7 @@ public class mesh_generator : MonoBehaviour
 
 
                 print("adding s triangle");
-                int b0 = i;
+                int b0 = i + offset;
                 int b1 = (b0 + 1) % (minSegment);
                 int t0 = (botSegments + b0 + scounter) % (minSegment + maxSegment);
                 int temp = (b0 + 1 + scounter) % (minSegment);
@@ -160,6 +205,9 @@ public class mesh_generator : MonoBehaviour
                 indices.Add(t0);
                 indices.Add(t1);
                 indices.Add(b0);
+                print(t0);
+                print(t1);
+                print(b0);
                 counter += step;
                 scounter += 1;
                 if(it > 100)
@@ -214,39 +262,37 @@ public class mesh_generator : MonoBehaviour
             //
             //}
     }
+    */
     private void OnValidate()
     {
-        Debug.Log("0Updating mesh with height: " + height);
         UpdateMesh();
     }
 
+    void updateFromSlider()
+    {
+        funnelHeight = fHeightSlider.value;
+        funnelRadius = fRadiusSlider.value * 0.5f;
+        tubeLength = tLengthSlider.value;
+        tubeRadius = tRadiusSlider.value * 0.5f;
+
+        UpdateMesh();
+    }
     void UpdateMesh()
     {
+
         CreateShape();
 
-       // foreach (var x in indices)
-       // {
-       //     print(x);
-       // }
         mesh.Clear();
+      
         mesh.vertices = vertices.ToArray();
         mesh.triangles = indices.ToArray();
-
-        //GetComponent<MeshFilter>().mesh = mesh;
-
-
-        print(vertices[1]);
+        mesh.uv = uvs.ToArray();
        
-       //foreach (var x in mesh.triangles)
-       //{
-       //    print(x);
-       //}
     }
-    // Update is called once per frame
-    void Update()
+
+    private void OnGUI()
     {
-       //print(height);
-       //print(radius);
-       
+        txtScale += Input.mouseScrollDelta.y * 0.05f;
+        gameObject.GetComponent<Renderer>().sharedMaterial.SetFloat("_TxtScale", txtScale);
     }
 }
